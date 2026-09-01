@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: false
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+
+    env:
+      SOLUTION: SagePay.IntegrationKit.sln
+      CONFIGURATION: ${{ inputs.configuration || 'Release' }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # The project targets .NET Framework v4.6, whose reference assemblies are no
+      # longer installed on the hosted Windows images. Build against v4.6 when it is
+      # available, otherwise fall back to the oldest newer targeting pack present, so
+      # the build stays as close to the project's target as the runner allows.
+      - name: Resolve targeting pack
+        id: tfm
+        shell: pwsh
+        run: |
+          $root = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework'
+          $preferred = @('v4.6', 'v4.6.1', 'v4.6.2', 'v4.7', 'v4.7.1', 'v4.7.2', 'v4.8', 'v4.8.1')
+          $installed = @(Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+          Write-Host "Installed targeting packs: $($installed -join ', ')"
+
+          $chosen = $preferred | Where-Object { $installed -contains $_ } | Select-Object -First 1
+          if (-not $chosen) {
+            Write-Error "No usable .NET Framework targeting pack found under $root"
+            exit 1
+          }
+
+          if ($chosen -ne 'v4.6') {
+            Write-Warning "The v4.6 targeting pack is not installed on this runner; building against $chosen instead."
+          }
+          Write-Host "Building against $chosen"
+          "version=$chosen" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        shell: pwsh
+        run: >
+          msbuild $env:SOLUTION
+          /t:Rebuild
+          /p:Configuration=$env:CONFIGURATION
+          /p:TargetFrameworkVersion=${{ steps.tfm.outputs.version }}
+          /v:minimal
+          /nologo
+
+      - name: List build output
+        shell: pwsh
+        run: Get-ChildItem -Path "bin\$env:CONFIGURATION" -Recurse -File | Select-Object Name, Length
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: SagePay.IntegrationKit-${{ inputs.configuration || 'Release' }}
+          path: |
+            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.dll
+            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.pdb
+          if-no-files-found: error
+          retention-days: 90
