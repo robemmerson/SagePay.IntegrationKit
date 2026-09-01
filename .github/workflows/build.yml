@@ -1,0 +1,79 @@
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: false
+        default: Release
+        type: choice
+        options:
+          - Release
+          - Debug
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+
+    env:
+      SOLUTION: SagePay.IntegrationKit.sln
+      CONFIGURATION: ${{ inputs.configuration || 'Release' }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up NuGet
+        uses: NuGet/setup-nuget@v2
+
+      # The project targets .NET Framework v4.6. The hosted Windows images carry a
+      # v4.6 folder under Reference Assemblies, but it has no assemblies in it, so
+      # MSBuild fails with MSB3644. Restore the real targeting pack from the official
+      # reference-assemblies package and point MSBuild at it, so the build stays on
+      # the framework version the project actually declares.
+      - name: Install .NET Framework 4.6 reference assemblies
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'refasm'
+          nuget install Microsoft.NETFramework.ReferenceAssemblies.net46 `
+            -Version 1.0.3 -OutputDirectory $dir -ExcludeVersion -NonInteractive
+
+          $root = Join-Path $dir 'Microsoft.NETFramework.ReferenceAssemblies.net46\build'
+          $probe = Join-Path $root '.NETFramework\v4.6\mscorlib.dll'
+          if (-not (Test-Path $probe)) {
+            Write-Error "v4.6 reference assemblies were not restored; expected $probe"
+            exit 1
+          }
+
+          Write-Host "Using targeting pack root: $root"
+          "TARGET_FRAMEWORK_ROOT=$root" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: pwsh
+        run: >
+          msbuild $env:SOLUTION
+          /t:Rebuild
+          /p:Configuration=$env:CONFIGURATION
+          "/p:TargetFrameworkRootPath=$env:TARGET_FRAMEWORK_ROOT"
+          /v:minimal
+          /nologo
+
+      - name: List build output
+        shell: pwsh
+        run: Get-ChildItem -Path "bin\$env:CONFIGURATION" -Recurse -File | Select-Object Name, Length
+
+      - name: Upload DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: SagePay.IntegrationKit-${{ inputs.configuration || 'Release' }}
+          path: |
+            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.dll
+            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.pdb
+          if-no-files-found: error
+          retention-days: 90
