@@ -9,7 +9,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SagePay.IntegrationKit</RootNamespace>
-    <AssemblyName>SagePay.IntegrationKit</AssemblyName>
+    <AssemblyName>SagePay.IntegrationKit.DotNet</AssemblyName>
     <TargetFrameworkVersion>v4.6</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
