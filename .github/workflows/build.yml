@@ -73,7 +73,7 @@ jobs:
         with:
           name: SagePay.IntegrationKit-${{ inputs.configuration || 'Release' }}
           path: |
-            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.dll
-            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.pdb
+            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.DotNet.dll
+            bin/${{ inputs.configuration || 'Release' }}/SagePay.IntegrationKit.DotNet.pdb
           if-no-files-found: error
           retention-days: 90
